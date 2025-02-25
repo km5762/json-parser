@@ -1,18 +1,6 @@
 use std::{collections::HashMap, iter::Peekable};
 
-use crate::scanner::Token;
-
-pub type Object = HashMap<String, Value>;
-
-#[derive(PartialEq, Debug)]
-pub enum Value {
-    String(String),
-    Array(Vec<Value>),
-    Object(Object),
-    Boolean(bool),
-    Number(f64),
-    Null,
-}
+use crate::{scanner::Token, Object, Value};
 
 pub fn parse(tokens: &[Token]) -> Option<Value> {
     let mut iter = tokens.iter().peekable();
