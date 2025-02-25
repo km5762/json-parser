@@ -50,9 +50,24 @@ fn parse_value<'a>(iter: &mut Peekable<impl Iterator<Item = &'a Token>>) -> Opti
 fn parse_object<'a>(iter: &mut Peekable<impl Iterator<Item = &'a Token>>) -> Option<Object> {
     let mut object = Object::new();
 
-    while **iter.peek()? != Token::RightBrace {
+    if **iter.peek()? == Token::RightBrace {
+        return Some(object);
+    }
+
+    loop {
         let (key, value) = parse_key_value_pair(iter)?;
         object.insert(key, value);
+
+        match iter.peek() {
+            Some(Token::Comma) => {
+                iter.next();
+            }
+            Some(Token::RightBrace) => {
+                iter.next();
+                break;
+            }
+            _ => return None,
+        }
     }
 
     Some(object)
@@ -61,7 +76,12 @@ fn parse_object<'a>(iter: &mut Peekable<impl Iterator<Item = &'a Token>>) -> Opt
 fn parse_array<'a>(iter: &mut Peekable<impl Iterator<Item = &'a Token>>) -> Option<Vec<Value>> {
     let mut array = Vec::new();
 
-    while let Some(v) = parse_value(iter) {
+    if **iter.peek()? == Token::RightBracket {
+        return Some(array);
+    }
+
+    loop {
+        let v = parse_value(iter)?;
         array.push(v);
 
         match iter.peek() {
@@ -173,5 +193,115 @@ mod tests {
         let mut outer = Object::new();
         outer.insert("outer".to_string(), Value::Object(inner));
         assert_eq!(parse(&tokens), Some(Value::Object(outer)));
+    }
+
+    #[test]
+    fn test_parse_nested_array() {
+        let tokens = vec![
+            Token::LeftBracket,
+            Token::LeftBracket,
+            Token::Number(1.0),
+            Token::Comma,
+            Token::Number(2.0),
+            Token::RightBracket,
+            Token::Comma,
+            Token::LeftBracket,
+            Token::Number(3.0),
+            Token::RightBracket,
+            Token::RightBracket,
+        ];
+        assert_eq!(
+            parse(&tokens),
+            Some(Value::Array(vec![
+                Value::Array(vec![Value::Number(1.0), Value::Number(2.0)]),
+                Value::Array(vec![Value::Number(3.0)])
+            ]))
+        );
+    }
+
+    #[test]
+    fn test_parse_mixed_nested_structure() {
+        let tokens = vec![
+            Token::LeftBrace,
+            Token::String("array".to_string()),
+            Token::Colon,
+            Token::LeftBracket,
+            Token::Number(1.0),
+            Token::Comma,
+            Token::String("text".to_string()),
+            Token::Comma,
+            Token::Null,
+            Token::RightBracket,
+            Token::Comma,
+            Token::String("object".to_string()),
+            Token::Colon,
+            Token::LeftBrace,
+            Token::String("key".to_string()),
+            Token::Colon,
+            Token::Boolean(false),
+            Token::RightBrace,
+            Token::RightBrace,
+        ];
+        let mut obj = Object::new();
+        obj.insert(
+            "array".to_string(),
+            Value::Array(vec![
+                Value::Number(1.0),
+                Value::String("text".to_string()),
+                Value::Null,
+            ]),
+        );
+        let mut inner_obj = Object::new();
+        inner_obj.insert("key".to_string(), Value::Boolean(false));
+        obj.insert("object".to_string(), Value::Object(inner_obj));
+
+        assert_eq!(parse(&tokens), Some(Value::Object(obj)));
+    }
+
+    #[test]
+    fn test_parse_trailing_comma_array() {
+        let tokens = vec![
+            Token::LeftBracket,
+            Token::Number(1.0),
+            Token::Comma,
+            Token::RightBracket,
+        ];
+        assert_eq!(parse(&tokens), None);
+    }
+
+    #[test]
+    fn test_parse_trailing_comma_object() {
+        let tokens = vec![
+            Token::LeftBrace,
+            Token::String("key".to_string()),
+            Token::Colon,
+            Token::Number(42.0),
+            Token::Comma,
+            Token::RightBrace,
+        ];
+        assert_eq!(parse(&tokens), None);
+    }
+
+    #[test]
+    fn test_parse_unclosed_array() {
+        let tokens = vec![Token::LeftBracket, Token::Number(1.0)];
+        assert_eq!(parse(&tokens), None);
+    }
+
+    #[test]
+    fn test_parse_unclosed_object() {
+        let tokens = vec![
+            Token::LeftBrace,
+            Token::String("key".to_string()),
+            Token::Colon,
+            Token::Number(42.0),
+        ];
+        assert_eq!(parse(&tokens), None);
+    }
+
+    #[test]
+    fn test_parse_unexpected_token() {
+        let tokens = vec![Token::Comma];
+        assert_eq!(parse(&tokens), None);
     }
 }
